@@ -137,15 +137,42 @@ Typical console output prints dataset and model sizes, then training progress (l
 
 num docs: 32033
 vocab size: 27
-num params: 51153
+num params: 4192
 
 Training...
-step    1 / 1000 | loss 3.2451
-step  100 / 1000 | loss 2.1234
-...
+step    1 / 1000 | loss 3.3057
+step  100 / 1000 | loss 1.9333
+step  200 / 1000 | loss 2.3840
+step  300 / 1000 | loss 3.1924
+step  400 / 1000 | loss 2.0515
+step  500 / 1000 | loss 2.1795
+step  600 / 1000 | loss 2.8178
+step  700 / 1000 | loss 2.8253
+step  800 / 1000 | loss 2.6771
+step  900 / 1000 | loss 2.9577
+step 1000 / 1000 | loss 2.7220
+
 --- inference (new, hallucinated names) ---
-sample  1: emma
-sample  2: jackson
+sample  1: anmie
+sample  2: lyase
+sample  3: iavina
+sample  4: evty
+sample  5: khiri
+sample  6: smaenalaz
+sample  7: avezin
+sample  8: conee
+sample  9: gielalia
+sample 10: yeahi
+sample 11: melio
+sample 12: jakyti
+sample 13: byani
+sample 14: esma
+sample 15: naldi
+sample 16: emidi
+sample 17: ahyanaut
+sample 18: keida
+sample 19: dales
+sample 20: lrymi
 ```
 
 ## Implementation notes (high level)
