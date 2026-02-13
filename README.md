@@ -74,7 +74,7 @@ For a typical configuration:
 - `block_size = 16`: Maximum sequence length
 - `vocab_size = 27`: Character vocabulary size (26 letters + BOS token)
 
-Total parameters: ~51K (varies with configuration)
+Total parameters:  ~4k 
 
 ### Inference
 
