@@ -16,25 +16,63 @@ use std::fs;
 // PSEUDO-RANDOM NUMBER GENERATOR
 // ============================================================================
 
+// Mersenne Twister MT19937 implementation to match Python's random module
 struct Rng {
-    state: u64,
+    mt: [u32; 624],
+    index: usize,
 }
 
 impl Rng {
     fn new(seed: u64) -> Self {
-        Self { state: seed }
+        let mut mt = [0u32; 624];
+        mt[0] = seed as u32;
+        
+        for i in 1..624 {
+            mt[i] = (1812433253u32
+                .wrapping_mul(mt[i - 1] ^ (mt[i - 1] >> 30)))
+                .wrapping_add(i as u32);
+        }
+        
+        Self { mt, index: 624 }
     }
 
     #[inline]
-    fn next_u64(&mut self) -> u64 {
-        self.state = self.state.wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        self.state
+    fn twist(&mut self) {
+        for i in 0..624 {
+            let x = (self.mt[i] & 0x80000000) + (self.mt[(i + 1) % 624] & 0x7fffffff);
+            let mut xa = x >> 1;
+            if x % 2 != 0 {
+                xa ^= 0x9908b0df;
+            }
+            self.mt[i] = self.mt[(i + 397) % 624] ^ xa;
+        }
+        self.index = 0;
+    }
+
+    #[inline]
+    fn extract_number(&mut self) -> u32 {
+        if self.index >= 624 {
+            self.twist();
+        }
+        
+        let mut y = self.mt[self.index];
+        y ^= y >> 11;
+        y ^= (y << 7) & 0x9d2c5680;
+        y ^= (y << 15) & 0xefc60000;
+        y ^= y >> 18;
+        
+        self.index += 1;
+        y
+    }
+
+    #[inline]
+    fn next_u32(&mut self) -> u32 {
+        self.extract_number()
     }
 
     #[inline]
     fn next_f32(&mut self) -> f32 {
-        (self.next_u64() >> 32) as f32 / u32::MAX as f32
+        self.next_u32() as f32 / (u32::MAX as f32 + 1.0)
     }
 
     #[inline]
@@ -47,7 +85,7 @@ impl Rng {
     #[inline]
     fn shuffle<T>(&mut self, slice: &mut [T]) {
         for i in (1..slice.len()).rev() {
-            let j = (self.next_u64() as usize) % (i + 1);
+            let j = (self.next_u32() as usize) % (i + 1);
             slice.swap(i, j);
         }
     }
@@ -200,8 +238,6 @@ impl Graph {
 
         for &v in topo.iter().rev() {
             let grad = self.nodes[v].grad;
-            // Clip very large gradients to prevent initial instability
-            let grad = grad.clamp(-10.0, 10.0);
 
             match self.nodes[v].op {
                 Op::Add(a, b) => {
@@ -220,10 +256,7 @@ impl Graph {
                 }
                 Op::Log(a) => {
                     let a_data = self.nodes[a].data;
-                    // Protect against division by zero
-                    if a_data.abs() > 1e-6 {
-                        self.nodes[a].grad += (1.0 / a_data) * grad;
-                    }
+                    self.nodes[a].grad += (1.0 / a_data) * grad;
                 }
                 Op::Exp(a) => {
                     let data = self.nodes[v].data;
@@ -592,8 +625,7 @@ fn extract_gradients(graph: &Graph, model: &mut GPTModel) {
             for &node_idx in indices {
                 sum += graph.get_grad(node_idx);
             }
-            // Clip parameter gradients to prevent explosion
-            param.grads[i] = sum.clamp(-5.0, 5.0);
+            param.grads[i] = sum;
         }
     };
 
@@ -627,11 +659,7 @@ fn train(model: &mut GPTModel, docs: &[Vec<usize>], num_steps: usize, learning_r
             let logits = gpt_forward(&mut graph, model, token_id, pos, &mut kv_cache);
             let probs = softmax(&mut graph, &logits);
             let target_prob = probs[target_id];
-            
-            // Numerical stability: Add epsilon to avoid log(0)
-            let eps = graph.leaf(1e-8);
-            let prob_clamped = graph.add(target_prob, eps);
-            let log_prob = graph.log(prob_clamped);
+            let log_prob = graph.log(target_prob);
             let loss = graph.neg(log_prob);
             losses.push(loss);
         }
@@ -687,11 +715,6 @@ fn generate(model: &mut GPTModel, bos_token: usize, vocab: &[char], temperature:
         }
         if token_id < vocab.len() {
             result.push(vocab[token_id]);
-        }
-        if pos % 4 == 0 {
-            model.clear_graph_refs(); // Important to clear accumulation vectors
-            graph = Graph::new();
-            kv_cache = KVCache::new(model.config.n_layer);
         }
     }
 
@@ -763,12 +786,12 @@ fn main() {
 
     println!("num params: {}\n", num_params);
     println!("Training...");
-    // Slightly reduced learning rate for stability
-    train(&mut model, &tokenized_docs, 1000, 0.005, 0.9, 0.999, 1e-8);
+    // Match Python hyperparameters exactly
+    train(&mut model, &tokenized_docs, 1000, 0.01, 0.85, 0.99, 1e-8);
 
     println!("\n--- inference (new, hallucinated names) ---");
     for i in 0..20 {
-        let sample = generate(&mut model, bos_token, &vocab, 1.0, 16, &mut rng);
+        let sample = generate(&mut model, bos_token, &vocab, 0.5, 16, &mut rng);
         println!("sample {:2}: {}", i + 1, sample);
     }
 }
